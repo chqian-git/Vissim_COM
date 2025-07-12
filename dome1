@@ -1,0 +1,74 @@
+import win32com.client as com  # 导入win32com库以调用com接口
+import pandas as pd
+import matplotlib.pyplot as plt
+
+# 加载接口及文件
+Vissim = com.Dispatch("VISSIM.Vissim.430")  # 创建一个vissim对象，指定com接口的vissim版本为4.3
+Vissim.LoadNet(r'F:\CHEN\400-domo\demoVissim\com.Demo1\demo1.inp')  # 载入路网
+
+net = Vissim.Net  # 实例化一个net路网对象，可以进入路网功能
+SgCtrls = net.SignalControllers  # 实例化一个SignalControllers对象 信号控制机
+SgCtrl = SgCtrls.GetSignalControllerByNumber(1)  # 获取编号为1的信号控制机
+
+SgGrps = SgCtrl.SignalGroups # 实例化一个SignalGroups对象 信号灯组
+SgGrp = SgGrps.GetSignalGroupByNumber(1)  # 获取编号为1的灯组
+
+SgCtrl.SetAttValue('CycleTime', 60)  # 设定信号机周期时间
+
+# 或者简写为
+# Todo
+
+
+# 设置仿真参数
+simulation = Vissim.simulation  # 实例化一个simulation对象，可以进入仿真功能
+simulation.Period = 1200  # Simulaiton seconds
+simulation.Resolution = 10  # Times steps / Sim.sec.
+simulation.RandomSeed = 60
+simulation.Speed = 500  # Sim.sec / s
+
+
+# 打开评价
+eval = Vissim.Evaluation
+eval.SetAttValue('DATACOLLECTION', True)  # 勾选上评价菜单栏的Data Collection框
+eval.SetAttValue('TravelTime', True) # 勾选行程时间
+eval.SetAttValue('Delay', True) # 勾选延误数据
+eval.SetAttValue('QueueCounter', True) # 勾选排队长度
+
+
+dceval = eval.DataCollectionEvaluation
+dceval.SetAttValue('FILE', True)
+dceval.SetAttValue('COMPILED', True)
+
+
+# 开始仿真
+for SimStep in range(1, int(simulation.Period * simulation.Resolution)):
+    simulation.RunSingleStep()
+    if SimStep / simulation.Resolution < 600:  # 注意除以Sim.Resolution，才对应当前仿真秒
+        SgGrp.SetAttValue('RedEnd',1)
+        SgGrp.SetAttValue('GreenEnd',55)
+    else:
+        SgGrp.SetAttValue('RedEnd',1)
+        SgGrp.SetAttValue('GreenEnd',5)
+simulation.stop()
+
+
+rawdata = pd.read_table(r'F:\CHEN\400-domo\demoVissim\com.Demo1\demo1.kna', encoding='gbk')
+
+needdata = rawdata.iloc[7:]  # 去掉无用行
+needdata1 = pd.DataFrame([jj.split(';') for jj in needdata['Node evaluation']])
+needdata1.columns = needdata1.iloc[0]  # 将首行字符串的值赋为columns列标签
+needdata1 = needdata1.iloc[1:, 0:3] # 去掉无用的行列
+needdata1[' Delay(All)'] = needdata1[' Delay(All)'].astype(float)  # 转化数据格式
+needdata1['aveQueue'] = needdata1['aveQueue'].astype(float)
+needdata1 = needdata1[::3].reset_index(drop=True)  # 每隔3行取一个值 去除重复数据 并重置index
+
+fig, ax = plt.subplots(1, 2)
+ax[0].plot(needdata1[' tStart'].astype(float), needdata1[' Delay(All)'].astype(float), 'o-', label='Delay')
+ax[1].plot(needdata1[' tStart'].astype(float), needdata1['aveQueue'].astype(float), 'o-', label='aveQueue')
+ax[0].legend()
+ax[1].legend()
+
+	
+
+	
+  
